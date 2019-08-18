@@ -3,8 +3,8 @@ import time
 import numpy as np
 from multiprocessing import Process
 from multiprocessing import Queue
-from picamera.array import PiRGBArray
-from picamera import PiCamera
+#from picamera.array import PiRGBArray
+#from picamera import PiCamera
 
 import edgetpu.detection.engine
 from edgetpu.utils import image_processing
@@ -20,13 +20,27 @@ fps = 0.0
 qfps = 0.0
 confThreshold = 0.6
 
+#initialize the usb camera
+#IM_WIDTH_USB = 3840
+#IM_HEIGHT_USB = 2160
+IM_WIDTH_USB = 800
+IM_HEIGHT_USB = 600
+camera = cv2.VideoCapture(0, cv2.CAP_ANY)
+
+camera.set(cv2.CAP_PROP_FRAME_WIDTH, IM_WIDTH_USB)
+camera.set(cv2.CAP_PROP_FRAME_HEIGHT, IM_HEIGHT_USB)
+
+if not camera.isOpened():
+        print("Camera is not opened!")
+        exit()
+
 #initialize the camera and grab a reference to the raw camera capture
-frameWidth = 304
-frameHeight = 304
-camera = PiCamera()
-camera.resolution = (frameWidth,frameHeight)
-camera.framerate = 40
-rawCapture = PiRGBArray(camera, size=(frameWidth,frameHeight)) 
+#frameWidth = 304
+#frameHeight = 304
+#camera = PiCamera()
+#camera.resolution = (frameWidth,frameHeight)
+#camera.framerate = 40
+#rawCapture = PiRGBArray(camera, size=(frameWidth,frameHeight)) 
 
 # allow the camera to warmup
 time.sleep(0.1)
@@ -39,23 +53,20 @@ with open(labels_file, 'r') as f:
 	lines = f.readlines()
 for line in lines:
 	parts = line.strip().split(maxsplit=1)
-	labels.insert(int(parts[0]),str(parts[1])) 
-	
+	labels.insert(int(parts[0]),str(parts[1]))
 print(labels)
 
 
 #define the function that handles our processing thread
 def classify_frame(img, inputQueue, outputQueue):
-	engine = edgetpu.detection.engine.DetectionEngine(\
-	'tpu_models/mobilenet_ssd_v2_coco_quant_postprocess_edgetpu.tflite')
+	engine = edgetpu.detection.engine.DetectionEngine('tpu_models/mobilenet_ssd_v2_coco_quant_postprocess_edgetpu.tflite')
 	# keep looping
 	while True:
 		# check to see if there is a frame in our input queue
 		if not inputQueue.empty():
 			# grab the frame from the input queue
 			img = inputQueue.get()
-			results = engine.DetectWithImage(img, threshold=0.4,\
-			keep_aspect_ratio=True, relative_coord=False, top_k=10)
+			results = engine.DetectWithImage(img, threshold=0.4,keep_aspect_ratio=True, relative_coord=False, top_k=10)
 
 			data_out = []
 
@@ -71,7 +82,6 @@ def classify_frame(img, inputQueue, outputQueue):
 					inference.extend((obj.label_id,obj.score,xmin,ymin,xmax,ymax))
 					data_out.append(inference)
 			outputQueue.put(data_out)
-		
 
 # initialize the input queue (frames), output queue (out),
 # and the list of actual detections returned by the child process
@@ -96,15 +106,21 @@ queuepulls = 0
 timer2 = 0
 t2secs = 0
 
-for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
+while(True):
+#for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
 	if queuepulls ==1:
 		timer2 = time.time()
 	# Capture frame-by-frame
-	frame = frame.array
+	#frame = frame.array
+	#img = Image.fromarray(frame)
+	ret, frame = camera.read()
+	if ret is not True:
+		print('Frame not available')
+		break
 
+	#frame = img
 	img = Image.fromarray(frame)
-
-
+	frameHeight, frameWidth = frame.shape[:2]
 	# if the input queue *is* empty, give the current frame to
 	# classify
 	if inputQueue.empty():
@@ -135,7 +151,7 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
 				cv2.putText(frame,' '+labeltxt+' '+str(round(confidence,2)),\
 				(xmin,ymin-2), font, 0.3,(0,0,0),1,cv2.LINE_AA)
 				detections +=1 #positive detections
-	
+
 		queuepulls += 1
 
 	# Display the resulting frame
@@ -159,12 +175,12 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
 
 	cv2.putText(frame,'Elapsed time: '+str(round(t2secs,2)), (150, frameHeight-10),\
  	cv2.FONT_HERSHEY_SIMPLEX, 0.3,(0, 255, 255), 1, cv2.LINE_AA)
-	
+
 
 	cv2.namedWindow('Coral',cv2.WINDOW_NORMAL)
 	cv2.resizeWindow('Coral',frameWidth,frameHeight)
 	cv2.imshow('Coral',frame)
-	
+
 	# FPS calculation
 	frames += 1
 	if frames >= 1:
@@ -177,7 +193,7 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
 		qfps = round(queuepulls/t2secs,2)
 
 	# clear the stream in preparation for the next frame
-	rawCapture.truncate(0)
+	#rawCapture.truncate(0)
 
 	keyPress = cv2.waitKey(1)
 	if keyPress == 113:
@@ -191,6 +207,7 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
 	if confThreshold <0.4:
 		confThreshold = 0.4
 
+camera.release()
 cv2.destroyAllWindows()
 
 

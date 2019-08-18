@@ -18,8 +18,22 @@ fps = 0.0
 qfps = 0.0
 confThreshold = 0.6
 
-#init video
-cap = cv2.VideoCapture('testvid.mp4')
+#init camera
+#IM_WIDTH_USB = 3840
+#IM_HEIGHT_USB = 2160
+IM_WIDTH_USB = 800
+IM_HEIGHT_USB = 600
+
+cap = cv2.VideoCapture(0, cv2.CAP_ANY)
+
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, IM_WIDTH_USB)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, IM_HEIGHT_USB)
+cap.set(cv2.CAP_PROP_FPS, 30)
+
+if not cap.isOpened():
+        print("Camera is not opened!")
+        exit()
+
 print("[info] W, H, FPS")
 print(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 print(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
